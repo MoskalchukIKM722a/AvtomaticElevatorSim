@@ -13,7 +13,5 @@ public abstract class Sensor
     }
 
     public abstract void ReadValue();
-    
-
-
+   
 }

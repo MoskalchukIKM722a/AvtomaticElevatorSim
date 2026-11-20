@@ -1,96 +1,115 @@
-﻿
-using AvtomaticElevatorSim;
+﻿using AvtomaticElevatorSim;
+using AvtomaticElevatorSim.Mqtt;
+using MQTTnet;
+using System.Text.Json;
 
 public class Program
 {
-    public static void Main()
+    public static async Task Main()
     {
-        PowerSensor powerSensor = new PowerSensor("Power ");
-        powerSensor.ReadValue();
+        SensorConfiguration[] sensors = CreateSensors();
+        var factory = new MqttClientFactory();
+        using var mqttClient = factory.CreateMqttClient();
+        var options = new MqttClientOptionsBuilder()
+            .WithTcpServer("127.0.0.1", 1883)
+            .Build();
 
-        if (powerSensor.HasPower)
-        {
-            Console.WriteLine ("Power is on. Elevator can operate.");
-            Console.WriteLine();
-            RunElevator();
-        }
-        else
-        {   
-            Console.WriteLine("Power is off. Elevator cannot operate.");
-        }
-        Console.WriteLine();
 
+        await mqttClient.ConnectAsync(options);
+        Console.WriteLine("Connected to MQTT broker.");
+
+
+        await RunSimulationAsync(mqttClient, sensors);
+
+        await mqttClient.DisconnectAsync();
+    }      
+
+    private static SensorConfiguration[] CreateSensors()
+    {
+        return
+            [
+                new (
+                    new EmergencySensor("Fire"),
+                    "elevator/1/sensors/emergency/fire",
+                    " "),
+                new (
+                    new EmergencySensor("Motor Overheat"),
+                    "elevator/1/sensors/emergency/motor_overheat",
+                    " "),
+                new (
+                    new EmergencySensor("Emergency Stop"),
+                    "elevator/1/sensors/emergency/stop",
+                    " "),
+                new (
+                    new TemperatureSensor("Outside temperature"),
+                    "elevator/1/sensors/outside/temperature",
+                    "C"),
+                new (
+                    new HumiditySensor("Outside humidity"),
+                    "elevator/1/sensors/outside/humidity",
+                    "%"),
+                new (
+                    new TemperatureSensor("Inner temperature"),
+                    "elevator/1/sensors/inside/temperature",
+                    "C"),
+                new (
+                    new HumiditySensor("Inner humidity"),
+                    "elevator/1/sensors/inside/humidity",
+                    "%"),
+                new (
+                    new LevelSensor("Silos fill level"),
+                    "elevator/1/sensors/silos/level",
+                    "%"),
+                new (
+                    new MuveSensor("Speed noriy1"),
+                    "elevator/1/sensors/noriy1/speed",
+                    "m/s"),
+                new (
+                    new MuveSensor("Speed noriy2"),
+                    "elevator/1/sensors/noriy2/speed",
+                    "m/s"),
+            ];
     }
 
-    public static void RunElevator()
+    private static async Task RunSimulationAsync(
+        IMqttClient mqttClient,
+        SensorConfiguration[] sensors)
     {
-
-        EmergencySensor fireSensor = new EmergencySensor("Fire");
-        EmergencySensor motorOverheatSensor = new EmergencySensor("Motor Overheat");
-        EmergencySensor emergencyStopSensor = new EmergencySensor("Emergency Stop");
-        TemperatureSensor outsideTemperatureSensor = new TemperatureSensor("Outside temperature");
-        HumiditySensor outsideHumiditySensor = new HumiditySensor("Outside humidity ");
-        TemperatureSensor innerTemperatureSensor = new TemperatureSensor("Inner temperature ");
-        HumiditySensor innerHumiditySensor = new HumiditySensor("Inner humidity ");
-        LevelSensor levelSensor = new LevelSensor("Silos fill level ");
-        MuveSensor insideMuveSensor = new MuveSensor("Speed noriy1 ");
-        MuveSensor outsideMuveSensor = new MuveSensor("Speed noriy2 ");
-
-        Elevator elevator = new Elevator();
-
-        elevator.Sensors.Add(outsideTemperatureSensor);
-        elevator.Sensors.Add(outsideHumiditySensor);
-        elevator.Sensors.Add(innerTemperatureSensor);
-        elevator.Sensors.Add(innerHumiditySensor);
-        elevator.Sensors.Add(levelSensor);
-        elevator.Sensors.Add(insideMuveSensor);
-        elevator.Sensors.Add(outsideMuveSensor);
-        elevator.Sensors.Add(fireSensor);
-        elevator.Sensors.Add(motorOverheatSensor);
-        elevator.Sensors.Add(emergencyStopSensor);
-
-        for (int i = 0; i < 10; i++)
+        for (int iteration = 1; iteration <= 10; iteration++)
         {
-            Console.WriteLine($"Iteration  {i + 1}:");
-            elevator.Monitor();
+            Console.WriteLine($"Iteration {iteration}.");
 
-            if (fireSensor.Value == 1 || motorOverheatSensor.Value == 1 || emergencyStopSensor.Value == 1)
+
+            foreach (var sensor in sensors)
             {
-                Console.WriteLine();
-                Console.WriteLine("!!! EMERGENCY DETECTED !!!");
-                Console.WriteLine();
-            
-                elevator.Transport.TurnOff();
-                elevator.Ventilation.TurnOff();
-
-                break; // зупинити роботу елеватора
+                await PublichSensorReadingAsync(mqttClient, sensor);
             }
 
-            if (innerTemperatureSensor.Value > 25)
-            {
-                elevator.Ventilation.TurnOn();
-            }
-            else
-            {
-                elevator.Ventilation.TurnOff();
-            }
             Console.WriteLine();
-
-            if (insideMuveSensor.Value > 0 || outsideMuveSensor.Value > 0)
-            {
-                elevator.Transport.TurnOn();
-            }
-            else
-            {
-                elevator.Transport.TurnOff();
-            }
-            Console.WriteLine();
+            await Task.Delay(TimeSpan.FromSeconds(2));
         }
     }
 
-    
+    private static async Task PublichSensorReadingAsync(
+        IMqttClient mqttClient,
+        SensorConfiguration configuration)
+    {
+        configuration.Sensor.ReadValue();
 
-    
+        string payload = JsonSerializer.Serialize(new
+        {
+            value = Math.Round(configuration.Sensor.Value, 2),
+            unit = configuration.Unit,
+            measuredAtUtc = DateTimeOffset.UtcNow
+        });
+
+        var message = new MqttApplicationMessageBuilder()
+            .WithTopic(configuration.Topic)
+            .WithPayload(payload)
+            .Build();
+
+        await mqttClient.PublishAsync(message);
+
+        Console.WriteLine($"Published {configuration.Topic} -> {payload} ");
+    }
 }
-
-
