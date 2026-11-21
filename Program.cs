@@ -71,9 +71,7 @@ public class Program
             ];
     }
 
-    private static async Task RunSimulationAsync(
-        IMqttClient mqttClient,
-        SensorConfiguration[] sensors)
+    private static async Task RunSimulationAsync(IMqttClient mqttClient, SensorConfiguration[] sensors)
     {
         for (int iteration = 1; iteration <= 10; iteration++)
         {
