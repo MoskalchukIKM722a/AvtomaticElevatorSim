@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="../Models/Models.csproj" Id="55f29ac1-67cf-4c17-9ebf-41d314c7d11f" />
   <Project Path="AvtomaticElevatorSim.csproj" />
 </Solution>

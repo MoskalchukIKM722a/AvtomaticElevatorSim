@@ -1,4 +1,5 @@
-﻿namespace AvtomaticElevatorSim.Mqtt;
+﻿using Models;
+namespace AvtomaticElevatorSim.Mqtt;
 
 public class SensorConfiguration
 {
